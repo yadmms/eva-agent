@@ -1,6 +1,11 @@
 @echo off
 chcp 65001 >nul
-title Eva Agent — 安装启动
+title Eva Agent — 一键启动
+setlocal enabledelayedexpansion
+
+:: 获取当前目录
+set DIR=%~dp0
+cd /d "%DIR%"
 
 echo.
 echo  ╔══════════════════════════════════╗
@@ -9,45 +14,61 @@ echo  ║   千叶实验室 Qianye Lab        ║
 echo  ╚══════════════════════════════════╝
 echo.
 
-:: 第1步：检查Python
+:: ── 第1步：检查 Python ──
 echo [1/3] 正在检查 Python...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo  ❌ 你的电脑还没有安装 Python。
-    echo.
-    echo  请按以下步骤操作：
-    echo   ① 打开浏览器，地址栏输入 python.org 回车
-    echo   ② 点黄色大按钮 "Download Python" 下载
-    echo   ③ 双击下载的文件安装
-    echo   ④ ⚠️ 安装时一定要勾选 "Add Python to PATH"
-    echo   ⑤ 安装完成后，重新双击运行本文件
-    echo.
+    echo  请从 python.org 下载安装，安装时勾选 "Add Python to PATH"
     pause
     exit /b 1
 )
-echo    ✓ Python 已就绪
+for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo    ✓ %%i
 
-:: 第2步：安装依赖
+:: ── 第2步：安装依赖 ──
 echo.
-echo [2/3] 正在安装所需组件（首次需要 1-2 分钟，请耐心等待）...
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet >nul 2>&1
+echo [2/3] 正在安装所需组件（首次需要 1-2 分钟）...
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet 2>nul
 if %errorlevel% neq 0 (
-    echo    ⚠ 国内镜像安装失败，尝试官方源...
-    pip install -r requirements.txt --quiet >nul 2>&1
+    pip install -r requirements.txt --quiet 2>nul
 )
 echo    ✓ 组件安装完成
 
-:: 第3步：启动
+:: ── 第3步：关闭旧进程 ──
 echo.
 echo [3/3] 正在启动 Eva Agent...
+for /f "tokens=2 delims=," %%a in ('tasklist /fi "imagename eq python.exe" /fo csv /nh 2^>nul') do (
+    taskkill /f /pid %%a >nul 2>&1
+)
+
+:: ── 后台启动服务 ──
+start /b python run.py
+
+:: ── 等待服务就绪 ──
+echo   等待服务启动...
+:waitloop
+timeout /t 2 /nobreak >nul
+powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:19198' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch {} exit 1" >nul 2>&1
+if %errorlevel% neq 0 goto waitloop
+
+:: ── 打开浏览器 ──
+start http://localhost:19198
+
 echo.
 echo  ╔══════════════════════════════════╗
-echo  ║   Eva Agent 启动中...           ║
-echo  ║   请稍后在浏览器打开：          ║
-echo  ║   http://localhost:19198        ║
+echo  ║   Eva Agent 已启动              ║
+echo  ║   浏览器窗口已自动打开           ║
+echo  ║   关闭命令行窗口即可停止服务     ║
 echo  ╚══════════════════════════════════╝
 echo.
-start http://localhost:19198
-python run.py
-pause
+
+:: ── 保持窗口（关闭时停服务） ──
+echo 按任意键停止服务...
+pause >nul
+
+:: ── 清理 ──
+for /f "tokens=2 delims=," %%a in ('tasklist /fi "imagename eq python.exe" /fo csv /nh 2^>nul') do (
+    taskkill /f /pid %%a >nul 2>&1
+)
+exit
