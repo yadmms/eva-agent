@@ -1,0 +1,11 @@
+pyyaml>=6.0
+httpx>=0.25
+fastapi>=0.104
+uvicorn>=0.24
+psutil>=5.9
+aiofiles>=23.0
+python-multipart>=0.0.6
+# 办公文档支持（可选）
+pdfminer.six>=20201018
+python-docx>=0.8.11
+openpyxl>=3.1.0

@@ -1,0 +1,8 @@
+#!/bin/bash
+# Eva Agent v0.11.2 — CLI 启动命令
+# 用法: ./eva          # 启动服务
+#       ./eva --cli    # 命令行模式
+# 安装到系统: sudo ln -s "$(pwd)/eva" /usr/local/bin/eva
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR"
+exec python3 run.py "$@"

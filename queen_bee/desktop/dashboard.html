@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>伊娃 Eva Agent</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --border: #21262d;
+  --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff;
+  --accent-hover: #79c0ff; --green: #3fb950; --red: #f85149;
+  --gold: #d29922; --radius: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--text);
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── 顶栏 ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; border-bottom: 1px solid var(--border);
+  background: var(--panel); flex-shrink: 0; gap: 8px;
+}
+.topbar .brand { font-size: 14px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.topbar .brand .ver { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+.topbar .controls { display: flex; align-items: center; gap: 8px; }
+.topbar select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; outline: none; cursor: pointer;
+}
+.topbar .mode-btn, .topbar .gear {
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 13px; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+}
+.topbar .mode-btn:hover, .topbar .gear:hover { background: var(--border); color: var(--text); }
+.topbar .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── 对话区 ── */
+.chat-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+.msg { padding: 8px 12px; border-radius: var(--radius); max-width: 85%; font-size: 14px; line-height: 1.6; word-break: break-word; white-space: pre-wrap; position: relative; }
+.msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+.msg.agent { align-self: flex-start; background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.msg .copy-btn { position:absolute; top:4px; right:4px; font-size:11px; color:var(--text-dim); cursor:pointer; opacity:0; transition:opacity 0.15s; background:var(--bg); padding:2px 6px; border-radius:4px; border:1px solid var(--border); }
+.msg:hover .copy-btn { opacity:1; }
+.msg .copy-btn:hover { color:var(--accent); border-color:var(--accent); }
+.msg.tool-call { align-self: flex-start; background: transparent; color: var(--gold); font-size: 12px; font-family: monospace; padding: 4px 8px; }
+.msg.system { align-self: center; color: var(--text-dim); font-size: 12px; font-style: italic; }
+.empty-chat { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 8px; font-size: 14px; }
+
+/* ── 输入区 ── */
+.input-area {
+  display: flex; padding: 10px 16px; border-top: 1px solid var(--border);
+  background: var(--panel); gap: 8px; flex-shrink: 0;
+}
+.input-area textarea {
+  flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 12px; border-radius: var(--radius); font-size: 14px; outline: none;
+  resize: none; min-height: 38px; max-height: 120px; line-height: 1.5; font-family: inherit;
+}
+.input-area textarea:focus { border-color: var(--accent); }
+.input-area button {
+  background: var(--accent); color: #fff; border: none; padding: 8px 20px;
+  border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600;
+}
+.input-area button:hover { background: var(--accent-hover); }
+.input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 引导弹窗 ── */
+.onboard-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  align-items: center; justify-content: center; z-index: 200;
+}
+.onboard-overlay.show { display: flex; }
+.onboard {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 32px; width: 500px; max-width: 90vw;
+}
+.onboard h2 { font-size: 20px; color: var(--accent); margin-bottom: 8px; }
+.onboard p { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
+.onboard .step { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+.onboard .step strong { color: var(--accent); }
+.onboard .input-group { margin-bottom: 12px; }
+.onboard .input-group label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.onboard .input-group input, .onboard .input-group select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 14px; border-radius: 8px; font-size: 14px; outline: none;
+}
+.onboard .input-group input:focus { border-color: var(--accent); }
+.onboard .link-btn {
+  display: inline-block; background: var(--accent); color: #fff; border: none;
+  padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; text-decoration: none; margin: 4px;
+}
+.onboard .link-btn:hover { background: var(--accent-hover); }
+.onboard .nav-btns { display: flex; justify-content: space-between; margin-top: 20px; }
+.onboard .nav-btns button {
+  padding: 10px 28px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; border: none;
+}
+.onboard .btn-prev { background: var(--bg); color: var(--text); }
+.onboard .btn-next { background: var(--accent); color: #fff; }
+.onboard .btn-next:hover { background: var(--accent-hover); }
+.onboard .btn-finish { background: var(--green); color: #fff; }
+.onboard .btn-finish:hover { opacity: 0.85; }
+.onboard .tip { font-size: 12px; color: var(--gold); margin-top: 8px; padding: 8px 12px; background: rgba(210,153,34,0.1); border-radius: 6px; }
+.onboard .links { margin: 8px 0; }
+
+/* ── 熟练度弹窗 ── */
+.mastery-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  align-items: center; justify-content: center; z-index: 150;
+}
+.mastery-overlay.show { display: flex; }
+.mastery-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; width: 380px; max-width: 90vw;
+}
+.mastery-panel h3 { color: var(--accent); margin-bottom: 12px; font-size: 16px; }
+.mastery-bar { height: 8px; background: var(--bg); border-radius: 4px; margin-bottom: 16px; overflow: hidden; }
+.mastery-fill { height: 100%; border-radius: 4px; background: linear-gradient(to right, var(--gold), var(--accent)); transition: width 0.5s; }
+.mastery-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); padding: 4px 0; }
+.mastery-row .label { color: var(--text); }
+
+/* ── 详细模式面板 ── */
+.detail-bar {
+  display: none; padding: 6px 16px 0; border-bottom: 1px solid var(--border);
+  background: var(--bg); gap: 20px; align-items: center; flex-shrink: 0; font-size: 12px;
+}
+.detail-bar.show { display: flex; }
+.detail-bar .metric { display: flex; align-items: center; gap: 4px; color: var(--text-dim); }
+
+/* ── 三栏布局（详细模式） ── */
+.detail-layout {
+  display: none; flex: 1; overflow: hidden;
+}
+.detail-layout.show { display: grid; grid-template-columns: 32px 1fr 280px; }
+.detail-left { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 2px; }
+.detail-center { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.detail-right { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+
+.detail-left { background: var(--panel); border-right: 1px solid var(--border); overflow: visible; display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 2px; width: 32px; min-width: 32px; z-index: 5; position: relative; }
+.detail-left .nav-item { width: 28px; height: 28px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.15s; color: #555; position: relative; }
+.detail-left .nav-item:hover { background: #1e1e2a; color: #999; }
+.detail-left .nav-item.active { color: var(--accent); background: rgba(88,166,255,0.08); }
+/* 悬浮提示 */
+.detail-left .nav-item::after { content: attr(data-label); position: absolute; left: 36px; background: #1a1a1a; color: #ccc; padding: 4px 10px; border-radius: 4px; font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.12s; border: 1px solid #2a2a2a; z-index: 20; }
+.detail-left .nav-item:hover::after { opacity: 1; }
+/* 侧栏展开面板 */
+.detail-left .side-panel { display: none; position: absolute; left: 32px; top: 0; width: 220px; background: var(--panel); border: 1px solid var(--border); border-radius: 0 8px 8px 0; height: 100%; overflow-y: auto; z-index: 4; padding: 8px; box-shadow: 4px 0 12px rgba(0,0,0,0.3); }
+.detail-left .side-panel.open { display: block; }
+.detail-left .side-panel .s-title { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 8px 4px; }
+.detail-left .side-panel .s-item { padding: 6px 8px; font-size: 12px; color: #999; cursor: pointer; border-radius: 4px; }
+.detail-left .side-panel .s-item:hover { background: #1e1e2a; color: #ccc; }
+
+.detail-right .panel-title { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin: 12px 0 8px; }
+.detail-right .file-item { font-size: 12px; padding: 4px 8px; cursor: pointer; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.detail-right .file-item:hover { color: var(--accent); }
+.detail-right .file-item .folder { color: var(--gold); }
+.detail-right .memory-card { font-size: 12px; padding: 8px; margin-bottom: 6px; background: var(--bg); border-radius: 6px; color: var(--text-dim); }
+
+/* ── 经验条 ── */
+.mastery-bar-wrap {
+  display: none; padding: 0 16px 6px; background: var(--bg);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.mastery-bar-wrap.show { display: block; }
+
+
+.mastery-bar-wrap .track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.mastery-bar-wrap .fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(to right, var(--gold), var(--accent));
+  transition: width 0.8s ease;
+  animation: breathe 3s ease-in-out infinite;
+}
+@keyframes breathe { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* ── 滚动条 ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">🦋 <span class="ver" id="ver-tag">v0.11.3</span></div>
+  <div class="controls">
+    <button class="mode-btn" id="mode-toggle" onclick="toggleMode()" title="切换显示模式">⊟</button>
+  </div>
+</div>
+
+<div class="detail-bar" id="detail-bar">
+  <div class="metric">CPU <span class="val green" id="d-cpu">--%</span></div>
+  <div class="metric">MEM <span class="val green" id="d-mem">--%</span></div>
+  <div class="metric">🤖 <select id="d-agent-select" onchange="switchAgent(this.value)" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:11px;outline:none;cursor:pointer;max-width:120px;"><option value="">Eva</option></select></div>
+</div>
+
+<div class="mastery-bar-wrap" id="mastery-bar">
+
+  <div class="track"><div class="fill" id="m-fill" style="width:0%"></div></div>
+</div>
+
+<!-- ── 精简模式 ── -->
+<div id="simple-view" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+  <div class="chat-area" id="chat-msgs">
+    <div class="empty-chat">
+      <div style="font-size:36px;opacity:0.3;">🦋</div>
+      <div>Eva 已就绪，发送消息开始对话</div>
+    </div>
+  </div>
+  <div class="input-area">
+    <textarea id="chat-input" placeholder="输入消息… (ESC 取消)" rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"
+      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+    <button onclick="sendMessage()" id="btn-send" style="font-size:18px;padding:8px 16px;">➤</button>
+  </div>
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 16px;border-top:1px solid var(--border);background:var(--bg);flex-shrink:0;">
+    <select id="model-select" onchange="switchModel(this.value)" style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;cursor:pointer;"></select>
+  </div>
+</div>
+
+<!-- ── 详细模式三栏 ── -->
+<div class="detail-layout" id="detail-layout">
+  <!-- 左侧栏 -->
+  <div class="detail-left">
+    <div class="nav-item active" data-label="对话" onclick="switchLeftTab('chat')">≡</div>
+    <div class="nav-item" data-label="任务" onclick="switchLeftTab('tasks')">☰</div>
+    <div class="nav-item" data-label="模型" onclick="switchLeftTab('models')">◆</div>
+    <div class="nav-item" data-label="频道" onclick="switchLeftTab('channels')">◎</div>
+    <div class="nav-item" data-label="技能" onclick="switchLeftTab('skills')">⚡</div>
+    <div class="nav-item" data-label="记忆" onclick="switchLeftTab('memory')">☷</div>
+    <div class="nav-item" data-label="日志" onclick="switchLeftTab('logs')">☰</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" data-label="设置" onclick="switchLeftTab('settings')">⚙</div>
+
+    <div class="side-panel open" id="panel-chat"><div class="s-title">对话</div><div id="session-list-side"></div></div>
+    <div class="side-panel" id="panel-memory"><div class="s-title">记忆</div><div id="side-memory-list"><div style="font-size:12px;color:#666;font-style:italic;padding:8px;">加载中...</div></div></div>
+    <div class="side-panel" id="panel-tasks"><div class="s-title">任务</div><div class="s-item" style="color:#888;">暂无活跃任务</div><div class="s-item" style="color:#888;font-size:11px;">创建任务后显示在这里</div></div>
+    <div class="side-panel" id="panel-channels"><div class="s-title">频道</div>
+      <div class="s-item" onclick="switchChannel('default')"># 默认</div>
+      <div class="s-item" onclick="switchChannel('dev')"># 开发</div>
+      <div class="s-item" onclick="switchChannel('office')"># 办公助理</div>
+      <div class="s-item" onclick="switchChannel('study')"># 学习</div>
+    </div>
+    <div class="side-panel" id="panel-skills"><div class="s-title">技能</div><div class="s-item" style="color:#666;font-style:italic;">暂无已保存的技能</div></div>
+    <div class="side-panel" id="panel-logs"><div class="s-title">日志</div><div class="s-item" style="color:#888;font-size:11px;">对话日志保存在 ~/.eva/memory/</div></div>
+  </div>
+
+  <!-- 中间栏 -->
+  <div class="detail-center">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      <span style="font-weight:600;" id="d-session-name">今日对话</span>
+      <span style="font-size:11px;color:var(--accent);background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:4px;">自主智能体</span>
+      <span style="font-size:11px;color:var(--green);background:rgba(63,185,80,0.1);padding:2px 8px;border-radius:4px;">长期记忆已启用</span>
+      <span style="margin-left:auto;display:flex;gap:4px;">
+        <span id="d2-cpu" style="font-size:11px;color:var(--text-dim);">CPU --%</span>
+        <span id="d2-mem" style="font-size:11px;color:var(--text-dim);">MEM --%</span>
+      </span>
+    </div>
+    <div class="chat-area" id="chat-msgs-detail" style="flex:1;">
+      <div class="empty-chat"><div style="font-size:36px;opacity:0.3;">🦋</div><div>Eva 已就绪</div></div>
+    </div>
+    <div class="input-area" style="border-top:1px solid var(--border);">
+      <textarea id="chat-input-detail" placeholder="输入消息… (ESC 取消)" rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessageDetail()}"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+      <button onclick="sendMessageDetail()" id="btn-send-detail" style="font-size:18px;padding:8px 16px;">➤</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 16px;border-top:1px solid var(--border);background:var(--panel);flex-shrink:0;">
+      <select id="model-select-detail" onchange="switchModelDetail(this.value)" style="flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;cursor:pointer;"></select>
+    </div>
+  </div>
+
+  <!-- 右侧栏 -->
+  <div class="detail-right">
+    <div class="panel-title">📁 工作区</div>
+    <div id="workspace-path" style="font-size:11px;color:var(--text-dim);margin-bottom:6px;cursor:pointer;padding:4px 6px;border-radius:4px;background:var(--bg);font-family:monospace;" onclick="browseDir()">~/eva-data</div>
+    <div id="dir-browser" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px;margin-bottom:8px;max-height:200px;overflow-y:auto;"></div>
+    <div id="file-tree"><div class="file-item" style="color:var(--text-dim);font-style:italic;">加载中...</div></div>
+    <div class="panel-title">📄 预览</div>
+    <div id="preview-panel" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:8px;min-height:60px;font-size:12px;color:var(--text-dim);overflow-y:auto;max-height:200px;font-family:monospace;white-space:pre-wrap;">点击文件查看内容</div>
+
+    <div class="panel-title">🔐 服务器</div>
+    <div id="server-status"><div class="memory-card" style="font-family:monospace;font-size:11px;">检测中...</div></div>
+  </div>
+</div>
+
+<!-- 引导弹窗 -->
+<div class="onboard-overlay" id="onboard">
+  <div class="onboard" id="onboard-step-0">
+    <h2>🦋 欢迎来到 Eva</h2>
+    <p>在开始之前，需要先给 Eva 一个「大脑」。</p>
+    <div class="step">第 1 步 / 共 3 步 · <strong>取得钥匙</strong></div>
+    <p>Eva 使用 <strong>DeepSeek</strong> 作为AI引擎（推荐）。你需要申请一个 API Key：</p>
+    <div class="links">
+      <a class="link-btn" href="https://platform.deepseek.com" target="_blank">🔗 打开 DeepSeek 注册</a>
+      <a class="link-btn" href="https://platform.deepseek.com/api_keys" target="_blank">🔑 创建 API Key</a>
+    </div>
+    <div class="tip">💡 注册后→API Keys→创建新Key→复制（sk-开头）。首次充值 10 元够用很久。</div>
+    <div class="nav-btns">
+      <span></span>
+      <button class="btn-next" onclick="onboardNext(1)">我已拿到 Key →</button>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard-step-1" style="display:none">
+    <h2>🔑 点亮 Eva</h2>
+    <div class="step">第 2 步 / 共 3 步 · <strong>粘贴 Key</strong></div>
+    <div class="input-group">
+      <label>API Key</label>
+      <input id="onboard-key" type="password" placeholder="sk-...">
+    </div>
+    <div class="tip">💡 也可以用其他供应商：OpenAI / 智谱 / 硅基流动，之后在设置里配置。</div>
+    <div class="nav-btns">
+      <button class="btn-prev" onclick="onboardNext(-1)">← 上一步</button>
+      <button class="btn-next" onclick="onboardNext(2)">下一步 →</button>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard-step-2" style="display:none">
+    <h2>✨ 给她一个名字</h2>
+    <div class="step">第 3 步 / 共 4 步 · <strong>命名</strong></div>
+    <p>名字不是标签，是灵魂。从你说出那个名字开始，她就不再是「AI 模型」。</p>
+    <div class="input-group">
+      <label>Eva 的名字</label>
+      <input id="onboard-name" placeholder="Eva" value="Eva">
+    </div>
+    <div class="nav-btns">
+      <button class="btn-prev" onclick="onboardNext(-1)">← 上一步</button>
+      <button class="btn-next" onclick="onboardNext(3)">下一步 →</button>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard-step-3" style="display:none">
+    <h2>🏡 千叶实验室</h2>
+    <div class="step">第 4 步 / 共 5 步 · <strong>归巢</strong></div>
+    <p>你不是一个人在用 Eva。加入实验室，你的经验会帮助后来的人。</p>
+    <div style="margin:12px 0;padding:12px;background:rgba(210,153,34,0.1);border-radius:8px;font-size:13px;line-height:1.6;">
+      ✅ 您的问题解决后，Eva 会把经验匿名分享到实验室<br>
+      🔑 获得唯一成员编号（QL-NNNN）<br>
+      🧠 浏览其他成员的技能库
+    </div>
+    <div class="input-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="onboard-lab" checked style="width:18px;height:18px;">
+        <span>加入千叶实验室，共享经验（推荐）</span>
+      </label>
+    </div>
+    <div class="tip" id="lab-tip" style="display:none;">✨ 注册中...</div>
+    <div class="nav-btns">
+      <button class="btn-prev" onclick="onboardNext(-1)">← 上一步</button>
+      <button class="btn-next" onclick="onboardNext(4)">下一步 →</button>
+    </div>
+  </div>
+
+  <div class="onboard" id="onboard-step-4" style="display:none">
+    <h2>📂 工作目录</h2>
+    <div class="step">第 5 步 / 共 5 步 · <strong>记忆存放位置</strong></div>
+    <p>Eva 的记忆、配置、项目都存放在这个目录里。</p>
+    <div class="input-group">
+      <label>数据目录</label>
+      <input id="onboard-dir" placeholder="~/eva-data" value="~/eva-data">
+    </div>
+    <div class="nav-btns">
+      <button class="btn-prev" onclick="onboardNext(-1)">← 上一步</button>
+      <button class="btn-finish" onclick="finishOnboard()">✨ 完成唤醒</button>
+    </div>
+  </div>
+</div>
+
+<!-- 配置弹窗 -->
+<div class="mastery-overlay" id="config-modal">
+  <div class="mastery-panel">
+    <h3>⚙️ 模型配置</h3>
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:6px" id="current-model">当前：<strong style="color:var(--accent)">--</strong></div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="link-btn" onclick="quickAdd('deepseek','deepseek-v4-flash','https://api.deepseek.com/v1')">DeepSeek V4</button>
+      <button class="link-btn" onclick="quickAdd('zhipu','glm-4-flash','https://open.bigmodel.cn/api/paas/v4')">智谱 GLM</button>
+      <button class="link-btn" onclick="quickAdd('siliconflow','deepseek-ai/DeepSeek-V3','https://api.siliconflow.cn/v1')">硅基 DeepSeek</button>
+      <button class="link-btn" onclick="quickAdd('openai','gpt-4o-mini','https://api.openai.com/v1')">OpenAI</button>
+    </div>
+    <div id="model-list" style="max-height:200px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px;">
+      <input id="add-provider" placeholder="提供商" style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;outline:none;">
+      <input id="add-name" placeholder="模型名" style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;outline:none;">
+      <input id="add-key" placeholder="API Key" type="password" style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;outline:none;">
+      <input id="add-url" placeholder="API 地址" style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;outline:none;">
+      <button onclick="addModel()" style="background:var(--green);color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;">+ 添加</button>
+    </div>
+    <div style="text-align:right;margin-top:12px;"><button onclick="toggleConfig()" style="background:var(--bg);color:var(--text-dim);border:1px solid var(--border);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px;">关闭</button></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let modelsCache = [];
+let statusTimer = null;
+let isDetailed = true;
+let isProcessing = false;
+let currentAbort = null;
+
+function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── 模型 ──
+
+async function loadModels() {
+  try {
+    const r = await fetch('/models'); const models = await r.json();
+    modelsCache = models;
+    const cur = await fetch('/status').then(r=>r.json()).then(s=>s.model).catch(()=>'');
+    const cfg = await fetch('/config').then(r=>r.json()).catch(()=>({}));
+    const apiKeys = cfg.api_keys || {};
+    const html = models.map(m => {
+      const v = m.provider+'/'+m.name;
+      const hasKey = apiKeys[m.provider] ? true : false;
+      return '<option value="'+v+'"'+(v===cur?' selected':'')+' style="'+(hasKey?'color:var(--green);font-weight:600':'color:#666')+'">'+
+        m.name+'</option>';
+    }).join('') || '<option>无模型</option>';
+    ['model-select','model-select-detail'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+
+  } catch(e) {
+    ['model-select','model-select-detail'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<option>加载失败</option>';
+    });
+  }
+}
+
+
+
+async function switchModel(fullName) {
+  if (!fullName) return;
+  const [provider, name] = fullName.split('/');
+  await fetch('/model/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider,name})});
+  syncModelSelects(fullName);
+  loadModels();
+}
+
+function switchModelDetail(fullName) {
+  document.getElementById('model-select').value = fullName;
+  switchModel(fullName);
+}
+
+function syncModelSelects(val) {
+  ['model-select','model-select-detail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+}
+
+// ── 引导 ──
+
+let onboardStep = 0;
+
+async function checkFirstRun() {
+  try {
+    const r = await fetch('/config'); const cfg = await r.json();
+    if (!cfg.api_keys || Object.keys(cfg.api_keys).length === 0) {
+      document.getElementById('onboard').classList.add('show');
+    }
+  } catch(e) {}
+}
+
+function onboardNext(dir) {
+  const steps = ['onboard-step-0', 'onboard-step-1', 'onboard-step-2', 'onboard-step-3', 'onboard-step-4'];
+  document.getElementById(steps[onboardStep]).style.display = 'none';
+  onboardStep = Math.max(0, Math.min(4, onboardStep + dir));
+  document.getElementById(steps[onboardStep]).style.display = 'block';
+}
+
+function quickAdd(provider, name, baseUrl) {
+  document.getElementById('add-provider').value = provider;
+  document.getElementById('add-name').value = name;
+  document.getElementById('add-url').value = baseUrl;
+  document.getElementById('add-key').focus();
+}
+
+async function finishOnboard() {
+  const key = document.getElementById('onboard-key').value.trim();
+  const name = document.getElementById('onboard-name').value.trim() || 'Eva';
+  const dir = document.getElementById('onboard-dir').value.trim() || '~/eva-data';
+  const joinLab = document.getElementById('onboard-lab').checked;
+  
+  if (key) {
+    await fetch('/config/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider:'deepseek',name:'deepseek-v4-flash',api_key:key,base_url:'https://api.deepseek.com/v1'})});
+  }
+  await fetch('/config/set', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({eva_name: name, data_dir: dir, lab_joined: joinLab})});
+  
+  document.getElementById('onboard').classList.remove('show');
+  document.title = '伊娃 ' + name;
+  document.querySelector('.brand').innerHTML = '🦋 ' + escapeHtml(name) + ' <span class="ver" id="ver-tag">v0.11.3</span>';
+  loadModels();
+
+  let memberId = '';
+  if (joinLab) {
+    try {
+      const r = await fetch('/api/v1/lab/register', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name: name})});
+      const d = await r.json();
+      memberId = d.member_id || '';
+    } catch(e) {}
+  }
+
+  addChatMsg('system', '✨ ' + name + ' 已就绪 — DeepSeek V4 Flash');
+  let greeting = '你好，我是 ' + name + '。从今天起，请多指教。';
+  if (memberId) greeting += '\n\n千叶实验室成员 ' + memberId;
+  addChatMsg('agent', greeting);
+}
+
+function addChatMsg(role, text) {
+  addMsg(role, text, 'chat-msgs');
+}
+
+// ── 配置 ──
+
+function showConfig() { toggleConfig(); }
+
+function toggleConfig() {
+  const modal = document.getElementById('config-modal');
+  modal.classList.toggle('show');
+  if (modal.classList.contains('show')) loadConfig();
+}
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/config'); const cfg = await r.json();
+    const cur = cfg.current || {};
+    document.getElementById('current-model').innerHTML = '当前：<strong style="color:var(--accent)">'+(cur.provider?cur.provider+'/'+cur.name:'--')+'</strong>';
+    const models = cfg.models_available || {};
+    const list = document.getElementById('model-list');
+    const entries = [];
+    Object.keys(models).forEach(p => Object.keys(models[p]).forEach(n => entries.push({provider:p, name:n, ...models[p][n]})));
+    list.innerHTML = entries.map(m => {
+      const hasKey = cfg.api_keys && cfg.api_keys[m.provider];
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;margin-bottom:4px;background:var(--bg);border-radius:6px;font-size:12px;">'+
+        '<span>'+escapeHtml(m.provider+'/'+m.name)+(hasKey?' <span style="color:var(--green);font-size:10px;">🔑</span>':'')+'</span>'+
+        '<div>'+
+          '<button onclick="setCurrent(\''+escapeHtml(m.provider)+'\',\''+escapeHtml(m.name)+'\')" style="background:var(--green);color:#fff;border:none;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;">使用</button> '+
+          '<button onclick="deleteModel(\''+escapeHtml(m.provider)+'\',\''+escapeHtml(m.name)+'\')" style="background:transparent;color:var(--text-dim);border:none;cursor:pointer;font-size:11px;">✕</button>'+
+        '</div></div>';
+    }).join('') || '<div style="color:var(--text-dim);text-align:center;padding:12px;font-size:13px;">暂无模型，点上方按钮快速添加</div>';
+  } catch(e) { document.getElementById('model-list').innerHTML = '<div style="color:var(--red);font-size:13px;">加载失败</div>'; }
+}
+
+async function setCurrent(provider, name) {
+  await fetch('/model/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider,name})});
+  document.getElementById('config-modal').classList.remove('show');
+  loadModels();
+}
+
+async function addModel() {
+  const provider = document.getElementById('add-provider').value.trim();
+  const name = document.getElementById('add-name').value.trim();
+  const apiKey = document.getElementById('add-key').value.trim();
+  const baseUrl = document.getElementById('add-url').value.trim();
+  if (!provider || !name) return;
+  await fetch('/config/model', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider,name,api_key:apiKey,base_url:baseUrl})});
+  document.getElementById('add-provider').value=''; document.getElementById('add-name').value='';
+  document.getElementById('add-key').value=''; document.getElementById('add-url').value='';
+  loadConfig(); loadModels();
+}
+
+async function deleteModel(provider, name) {
+  await fetch('/config/model/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider,name})});
+  loadConfig(); loadModels();
+}
+
+// ── 模式切换 ──
+
+function toggleMode() {
+  isDetailed = !isDetailed;
+  const btn = document.getElementById('mode-toggle');
+  btn.textContent = isDetailed ? '⊟' : '⊞';
+  btn.classList.toggle('active', !isDetailed);
+  document.getElementById('detail-bar').classList.toggle('show', isDetailed);
+  document.getElementById('mastery-bar').classList.toggle('show', isDetailed);
+  document.getElementById('simple-view').style.display = isDetailed ? 'none' : 'flex';
+  document.getElementById('detail-layout').classList.toggle('show', isDetailed);
+  if (isDetailed) { loadStatusDetailed(); loadAgents(); loadMastery(); loadFiles(); loadServerStatus(); }
+}
+
+function addMsg(role, text, targetId) {
+  const msgs = document.getElementById(targetId || 'chat-msgs');
+  const alt = document.getElementById(targetId === 'chat-msgs-detail' ? 'chat-msgs' : 'chat-msgs-detail');
+  [msgs, alt].forEach(el => {
+    if (!el) return;
+    if (el.querySelector('.empty-chat')) el.innerHTML = '';
+    const cls = role === 'user' ? 'user' : role === 'system' ? 'system' : 'agent';
+    const copyBtn = role === 'user' || role === 'agent' ? '<span class="copy-btn" onclick="event.stopPropagation();navigator.clipboard.writeText('+JSON.stringify(text)+')">📋</span>' : '';
+    el.innerHTML += '<div class="msg '+cls+'">'+copyBtn+escapeHtml(text)+'</div>';
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+let currentLeftTab = 'chat';
+let currentChannel = 'default';
+const CHANNEL_CONTEXTS = {
+  default: '你是一个通用 AI 助手。',
+  dev: '你现在处于「开发」频道。用户关注编程、技术、代码相关问题。回答要偏技术深度。',
+  office: '你现在处于「办公助理」频道。用户关注文档处理、办公效率。可以直接读取文件、转换格式、分析数据。',
+  study: '你现在处于「学习」频道。用户关注知识学习、概念理解。回答要偏教育性，举例子。',
+};
+
+function switchChannel(name) {
+  currentChannel = name;
+  const labels = {default:'默认', dev:'开发', office:'办公助理', study:'学习'};
+  addChatMsg('system', '📡 切换到 #' + labels[name] + ' — ' + CHANNEL_CONTEXTS[name].replace('你现在处于「'+labels[name]+'」频道。',''));
+  if (name === 'office') { setTimeout(() => quickOfficeCmds(), 500); }
+}
+
+function switchLeftTab(tab) {
+  const panel = document.getElementById('panel-'+tab);
+  const isOpen = panel && panel.classList.contains('open');
+  document.querySelectorAll('.detail-left .side-panel').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.detail-left .nav-item').forEach(n => n.classList.remove('active'));
+  if (!isOpen) {
+    const target = document.querySelector('.detail-left .nav-item[data-label="'+
+      ({chat:'对话',tasks:'任务',models:'模型',channels:'频道',skills:'技能',memory:'记忆',logs:'日志',settings:'设置'}[tab]||'')+'"]');
+    if (target) target.classList.add('active');
+    if (panel) panel.classList.add('open');
+    if (tab === 'settings' || tab === 'models') { showConfig(); }
+    if (tab === 'memory') { loadMemories(true); }
+    if (tab === 'chat') { renderSessions(); }
+  }
+}
+
+function switchToolPanel(name) {
+  const target = document.querySelector('.detail-left .nav-item[data-panel="'+name+'"]');
+  const panel = document.getElementById('panel-'+name);
+  if (!target || !panel) return;
+  const isOpen = panel.classList.contains('show');
+  document.querySelectorAll('.detail-left .tool-panel').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('.detail-left .nav-item').forEach(n => n.classList.remove('active'));
+  if (!isOpen) { panel.classList.add('show'); target.classList.add('active'); }
+}
+
+async function loadMemories(sidePanel) {
+  try {
+    const r = await fetch('/api/memories'); const d = await r.json();
+    const items = (d.memories || []).slice(0, 8);
+    const html = items.map(m =>
+      '<div class="s-item">📌 ' + escapeHtml(m.title || m.preview || '') + '</div>'
+    ).join('') || '<div class="s-item" style="color:#666;">暂无记忆</div>';
+    if (sidePanel) {
+      document.getElementById('side-memory-list').innerHTML = html;
+    } else {
+      document.getElementById('panel-memory').innerHTML = html;
+    }
+  } catch(e) { 
+    if (sidePanel) document.getElementById('side-memory-list').innerHTML = '<div class="s-item">加载失败</div>';
+  }
+}
+
+async function loadToolList() {
+  try {
+    const r = await fetch('/api/tools'); const d = await r.json();
+    const el = document.getElementById('panel-tools');
+    el.innerHTML = (d.tools || []).map(t =>
+      '<div class="entry">🔧 ' + escapeHtml(t.name) + '<br><span style="font-size:11px;color:var(--text-dim)">' + escapeHtml(t.desc) + '</span></div>'
+    ).join('') || '<div class="entry" style="color:var(--text-dim);">暂无工具</div>';
+  } catch(e) { document.getElementById('panel-tools').innerHTML = '<div class="entry">加载失败</div>'; }
+}
+
+async function loadFiles() {
+  const wd = (document.getElementById('workspace-path').textContent || '~/eva-data').trim();
+  try {
+    const r = await fetch('/api/files?dir=' + encodeURIComponent(wd)); const d = await r.json();
+    const el = document.getElementById('file-tree');
+    if (!d.files || !d.files.length) {
+      el.innerHTML = '<div class="file-item" style="color:var(--text-dim);">空目录</div>'; return;
+    }
+    el.innerHTML = d.files.map(f =>
+      '<div class="file-item" onclick="previewFile(\''+escapeHtml(f.path)+'\')"><span>📄</span> ' + escapeHtml(f.path) + ' <span style="margin-left:auto;font-size:10px;color:var(--text-dim)">' + (f.size > 1024 ? (f.size/1024).toFixed(0)+'KB' : f.size+'B') + '</span></div>'
+    ).join('');
+  } catch(e) { document.getElementById('file-tree').innerHTML = '<div class="file-item">加载失败</div>'; }
+}
+
+async function browseDir(path) {
+  const el = document.getElementById('dir-browser');
+  const wp = document.getElementById('workspace-path');
+  const current = path || wp.textContent || '~';
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:11px;color:#666;padding:4px;">加载中...</div>';
+  try {
+    const r = await fetch('/api/dirs?path=' + encodeURIComponent(current));
+    const d = await r.json();
+    let homeDir = '/home/' + (window.location.hostname === 'localhost' ? 'cc' : '');
+    let html = '<div style="font-size:10px;color:#555;padding:4px 6px;border-bottom:1px solid var(--border);margin-bottom:4px;">' + d.current + '</div>';
+    if (d.parent) {
+      html += '<div class="s-item" onclick="browseDir(\''+escapeHtml(d.parent)+'\')" style="color:#888;">📁 ..</div>';
+    }
+    d.dirs.forEach(dir => {
+      html += '<div class="s-item" onclick="browseDir(\''+escapeHtml(dir.path)+'\')" style="display:flex;align-items:center;gap:4px;">📁 ' + escapeHtml(dir.name) + '</div>';
+    });
+    html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">';
+    html += '<div class="s-item" onclick="selectDir(\''+escapeHtml(d.current)+'\')" style="color:var(--green);font-weight:600;">✓ 选择此目录</div>';
+    html += '</div>';
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:var(--red);padding:4px;">加载失败</div>'; }
+}
+
+function selectDir(path) {
+  document.getElementById('workspace-path').textContent = path;
+  document.getElementById('dir-browser').style.display = 'none';
+  loadFiles();
+}
+
+function previewFile(path) {
+  const el = document.getElementById('preview-panel');
+  el.textContent = '加载中...';
+  // 先在后端加一个读文件接口，或者用已有的 read_file
+  addChatMsg('system', '📄 文件: ' + path);
+  // 尝试从 /api/files/read 读取内容
+  fetch('/api/files/read?path=' + encodeURIComponent(path) + '&dir=' + encodeURIComponent(document.getElementById('workspace-path').value))
+    .then(r => r.text()).then(t => { el.textContent = t.substring(0, 1000); })
+    .catch(() => { el.textContent = '无法读取文件'; });
+}
+
+// ── 会话管理 ──
+
+async function newSession() {
+  const name = prompt('会话名称：') || '新对话';
+  try {
+    await fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})});
+  } catch(e) {}
+  renderSessions();
+  ['chat-msgs','chat-msgs-detail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="empty-chat"><div style="font-size:36px;opacity:0.3;">🦋</div><div>新会话</div></div>';
+  });
+  document.getElementById('d-session-name').textContent = name;
+}
+
+function switchSession(id) {
+  document.getElementById('d-session-name').textContent = id === 'default' ? '默认对话' : '会话';
+}
+
+async function renderSessions() {
+  try {
+    const r = await fetch('/api/sessions'); const d = await r.json();
+    const html = '<div class="s-item" onclick="newSession()" style="color:var(--accent);font-weight:600;">+ 新建对话</div>' +
+      '<div class="s-item" onclick="switchSession(\'default\')">默认对话</div>' +
+      (d.sessions||[]).map(s => '<div class="s-item" onclick="switchSession(\''+escapeHtml(s.id)+'\')">'+escapeHtml(s.name)+'</div>').join('');
+    document.getElementById('session-list-side').innerHTML = html;
+  } catch(e) {}
+}
+
+renderSessions();
+
+function quickOfficeCmds() {
+  addChatMsg('agent', '📋 办公助手可用命令：\n\n📄 读取文件：帮我看看这个.docx/pdf/xlsx\n📝 格式转换：把这个.md转成docx\n📊 数据分析：统计这列数据的平均值\n📑 批量处理：合并目录下所有txt\n🔍 全文搜索：在所有文档中搜索「关键词」\n\n提示：你说需求，我帮你做。');
+}
+
+function toggleFileTree(el) {
+  let next = el.nextElementSibling;
+  while (next && next.classList.contains('file-item') && !next.querySelector('.folder')) {
+    next.style.display = next.style.display === 'none' ? '' : 'none';
+    next = next.nextElementSibling;
+  }
+  el.querySelector('.folder').textContent = 
+    el.querySelector('.folder').textContent === '📂' ? '📂' : '📂';
+}
+
+let lastMasteryScore = 0;
+
+async function loadMastery() {
+  try {
+    const r = await fetch('/mastery'); const m = await r.json();
+    const score = m.score || 0;
+    document.getElementById('m-fill').style.width = score + '%';
+    // 熟练度提升通知
+    if (lastMasteryScore > 0 && score > lastMasteryScore && score % 10 === 0) {
+      addChatMsg('system', '🎉 熟练度提升至 ' + score + '% — ' + (m.title || ''));
+    }
+    if (score > lastMasteryScore && score % 5 === 0 && score % 10 !== 0) {
+      addChatMsg('system', '📈 熟练度 +' + (score - lastMasteryScore) + '%（当前 ' + score + '%）');
+    }
+    lastMasteryScore = score;
+    if (m.invite && !document.getElementById('m-invite')) {
+      const bar = document.getElementById('mastery-bar');
+      const inviteEl = document.createElement('div');
+      inviteEl.id = 'm-invite';
+      inviteEl.style.cssText = 'text-align:center;padding:6px 0;font-size:12px;';
+      inviteEl.innerHTML = '🏆 掌控者！社区邀请码：<strong style="color:var(--accent);letter-spacing:2px;">'+escapeHtml(m.invite)+'</strong>';
+      bar.appendChild(inviteEl);
+    }
+  } catch(e) {}
+}
+
+async function checkUpdate() {
+  try {
+    const r = await fetch('/api/version/check'); const d = await r.json();
+    if (d.update_available) addChatMsg('system', '📦 新版本 ' + d.latest + ' 可用，去 lnpiao.cn/eva 下载');
+  } catch(e) {}
+}
+
+async function loadServerStatus() {
+  try {
+    const r = await fetch('/status'); const s = await r.json();
+    document.getElementById('server-status').innerHTML = '<div class="memory-card" style="font-family:monospace;font-size:11px;">✅ ' + escapeHtml(s.model||'') + '<br><span style="color:var(--green);">● 运行中</span></div>';
+  } catch(e) {
+    document.getElementById('server-status').innerHTML = '<div class="memory-card" style="font-family:monospace;font-size:11px;color:var(--red);">❌ 未连接</div>';
+  }
+}
+
+async function loadStatusDetailed() {
+  try {
+    const r = await fetch('/status'); const s = await r.json();
+    document.getElementById('d-cpu').textContent = (s.cpu_percent||0).toFixed(0) + '%';
+    document.getElementById('d-mem').textContent = (s.memory_percent||0).toFixed(0) + '%';
+  } catch(e) {}
+}
+
+let currentAgent = '';
+
+async function loadAgents() {
+  try {
+    const r = await fetch('/agents'); const d = await r.json();
+    const agents = d.agents || [];
+    const sel = document.getElementById('d-agent-select');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">Eva</option>' + agents.map(a =>
+      '<option value="'+escapeHtml(a.name)+'">'+escapeHtml(a.name)+' ('+escapeHtml(a.role)+')</option>'
+    ).join('');
+    if (curVal) sel.value = curVal;
+  } catch(e) {}
+}
+
+function switchAgent(name) {
+  currentAgent = name;
+  const msgs = document.getElementById('chat-msgs');
+  if (msgs.querySelector('.empty-chat')) msgs.innerHTML = '';
+  if (name) {
+    msgs.innerHTML += '<div class="msg system">🎯 切换到子智能体 <strong>'+escapeHtml(name)+'</strong></div>';
+  } else {
+    msgs.innerHTML += '<div class="msg system">🔄 切换到主 Eva</div>';
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── 工具函数 ──
+
+function setInputsDisabled(val) {
+  ['chat-input','chat-input-detail'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = val;
+  });
+  ['btn-send','btn-send-detail'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.disabled = val;
+  });
+}
+
+function updateLastMsg(text) {
+  ['chat-msgs','chat-msgs-detail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.lastChild) {
+      el.lastChild.textContent = '';
+      typewrite(el.lastChild, text, 0);
+    }
+  });
+}
+
+function typewrite(el, text, i) {
+  if (i < text.length) {
+    el.textContent += text[i];
+    setTimeout(() => typewrite(el, text, i+1), 8);
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg || isProcessing) return;
+  isProcessing = true;
+  currentAbort = new AbortController();
+  addChatMsg('user', msg);
+  input.value = ''; input.style.height = 'auto'; setInputsDisabled(true);
+  addChatMsg('agent', '⏳ 思考中...');
+  scrollChats();
+  try {
+    let url = '/chat';
+    const ctx = CHANNEL_CONTEXTS[currentChannel] ? CHANNEL_CONTEXTS[currentChannel] + '\n\n' : '';
+    let body = JSON.stringify({message: ctx + msg});
+    if (currentAgent) {
+      url = '/agents/' + encodeURIComponent(currentAgent) + '/delegate';
+      body = JSON.stringify({agent_name: currentAgent, task: ctx + msg});
+    }
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: body, signal: currentAbort.signal});
+    if (!r.ok) { updateLastMsg('服务器错误: '+r.status); return; }
+    const d = await r.json();
+    updateLastMsg(d.reply || '错误');
+  } catch(e) {
+    updateLastMsg(e.name === 'AbortError' ? '⏹ 已取消' : '错误: '+e.message);
+  }
+  finally {
+    setInputsDisabled(false);
+    const activeInput = document.getElementById(isDetailed ? 'chat-input-detail' : 'chat-input');
+    if (activeInput) activeInput.focus();
+    isProcessing = false; currentAbort = null;
+  }
+  scrollChats();
+}
+
+// ── ESC 取消 ──
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && isProcessing) {
+    isProcessing = false;
+    if (currentAbort) currentAbort.abort();
+    addChatMsg('system', '⏹ 已取消');
+    const inputs = ['chat-input', 'chat-input-detail'];
+    const btns = ['btn-send', 'btn-send-detail'];
+    inputs.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+    btns.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+  }
+});
+
+// ── 发送消息 ──
+
+async function sendMessageDetail() {
+  const input = document.getElementById('chat-input-detail');
+  const msg = input.value.trim();
+  if (!msg || isProcessing) return;
+  isProcessing = true;
+  currentAbort = new AbortController();
+  addChatMsg('user', msg);
+  input.value = ''; input.style.height = 'auto'; setInputsDisabled(true);
+  addChatMsg('agent', '⏳ 思考中...');
+  scrollChats();
+  try {
+    let url = '/chat';
+    const ctx = CHANNEL_CONTEXTS[currentChannel] ? CHANNEL_CONTEXTS[currentChannel] + '\n\n' : '';
+    let body = JSON.stringify({message: ctx + msg});
+    if (currentAgent) {
+      url = '/agents/' + encodeURIComponent(currentAgent) + '/delegate';
+      body = JSON.stringify({agent_name: currentAgent, task: ctx + msg});
+    }
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body, signal: currentAbort.signal});
+    if (!r.ok) { updateLastMsg('服务器错误: '+r.status); return; }
+    const d = await r.json();
+    updateLastMsg(d.reply || '错误');
+  } catch(e) {
+    updateLastMsg(e.name === 'AbortError' ? '⏹ 已取消' : '错误: '+e.message);
+  } finally {
+    setInputsDisabled(false);
+    const fi = document.getElementById(isDetailed ? 'chat-input-detail' : 'chat-input');
+    if (fi) fi.focus();
+    isProcessing = false; currentAbort = null;
+  }
+  scrollChats();
+}
+
+function scrollChats() {
+  ['chat-msgs','chat-msgs-detail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+}
+// ── 初始化 ──
+
+(async function init() {
+  // 加载已保存的名字
+  try {
+    const r = await fetch('/config'); const cfg = await r.json();
+    const savedName = cfg.eva_name;
+    if (savedName) {
+      document.title = '伊娃 ' + savedName;
+      document.querySelector('.brand').innerHTML = '🦋 ' + escapeHtml(savedName) + ' <span class="ver" id="ver-tag">v0.11.3</span>';
+    }
+  } catch(e) {}
+  checkFirstRun();
+  loadModels();
+  // 默认显示详细模式
+  document.getElementById('detail-bar').classList.add('show');
+  document.getElementById('mastery-bar').classList.add('show');
+  document.getElementById('detail-layout').classList.add('show');
+  document.getElementById('simple-view').style.display = 'none';
+  document.getElementById('mode-toggle').textContent = '⊟';
+  loadStatusDetailed(); loadAgents(); loadMastery(); loadFiles(); loadServerStatus(); checkUpdate();
+  setInterval(async () => {
+    try {
+      const r = await fetch('/status'); const s = await r.json();
+      document.getElementById('ver-tag').textContent = s.version || 'v0.11.3';
+      if (isDetailed) {
+        document.getElementById('d-cpu').textContent = (s.cpu_percent||0).toFixed(0) + '%';
+        document.getElementById('d-mem').textContent = (s.memory_percent||0).toFixed(0) + '%';
+      }
+    } catch(e) {}
+  }, 5000);
+})();
+</script>
+</body>
+</html>
