@@ -1,40 +1,48 @@
-# Eva Agent — Windows 一键启动
+# Eva Agent v0.11.3 — PowerShell 启动脚本
 # 右键 → 使用 PowerShell 运行
 
-$DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $DIR
+$LogFile = "eva-startup.log"
+"=== Eva Agent v0.11.3 ===" | Out-File $LogFile
+"OS: Windows PowerShell" | Out-File $LogFile -Append
 
-Write-Host "╔══════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   伊娃 Eva Agent v0.11.3       ║" -ForegroundColor Cyan
-Write-Host "║   千叶实验室 Qianye Lab        ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
+Write-Host "  Eva Agent v0.11.3 - Qianye Lab" -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 检查 Python
-Write-Host "[1/3] 检查 Python..." -NoNewline
-try { python --version | Out-Null; Write-Host " ✓" -ForegroundColor Green }
-catch { Write-Host " ✗ 未安装 Python" -ForegroundColor Red; pause; exit }
+# Step 1: Check Python
+Write-Host "[1/3] Checking Python..." -NoNewline
+try { python --version | Out-Null; Write-Host " OK" -ForegroundColor Green }
+catch { Write-Host " FAIL" -ForegroundColor Red; pause; exit }
 
-# 安装依赖
-Write-Host "[2/3] 安装组件..." -NoNewline
-pip install -r requirements.txt --quiet 2>$null
-Write-Host " ✓" -ForegroundColor Green
+# Step 2: Install deps
+Write-Host "[2/3] Installing dependencies..."
+pip install -r requirements.txt 2>&1 | Out-File $LogFile -Append
+if ($LASTEXITCODE -ne 0) {
+    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple 2>&1 | Out-File $LogFile -Append
+}
+Write-Host "  OK" -ForegroundColor Green
 
-# 启动
-Write-Host "[3/3] 启动服务..."
+# Step 3: Start server
+Write-Host "[3/3] Starting server..."
+Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "python"
 $psi.Arguments = "run.py"
 $psi.UseShellExecute = $true
-$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Minimized
+$psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 $p = [System.Diagnostics.Process]::Start($psi)
 
+Write-Host "  Waiting..."
 Start-Sleep 3
 Start-Process "http://localhost:19198"
 
-Write-Host "`n  Eva Agent 已启动，浏览器已打开" -ForegroundColor Green
-Write-Host "  按任意键停止服务...`n"
-pause
+Write-Host ""
+Write-Host "  Eva Agent is running!" -ForegroundColor Green
+Write-Host "  Browser opened at localhost:19198" -ForegroundColor Green
+Write-Host "  Press any key to stop..."
+Write-Host ""
 
-# 停止
+pause
 $p.Kill()
