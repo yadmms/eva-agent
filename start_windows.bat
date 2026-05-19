@@ -1,74 +1,63 @@
 @echo off
-chcp 65001 >nul
-title Eva Agent — 一键启动
-setlocal enabledelayedexpansion
-
-:: 获取当前目录
-set DIR=%~dp0
-cd /d "%DIR%"
+title Eva Agent
 
 echo.
-echo  ╔══════════════════════════════════╗
-echo  ║   伊娃 Eva Agent v0.11.3       ║
-echo  ║   千叶实验室 Qianye Lab        ║
-echo  ╚══════════════════════════════════╝
+echo ====================================
+echo   Eva Agent v0.11.3 - Qianye Lab
+echo ====================================
 echo.
 
-:: ── 第1步：检查 Python ──
-echo [1/3] 正在检查 Python...
+:: Step 1: Check Python
+echo [1/3] Checking Python...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo  ❌ 你的电脑还没有安装 Python。
-    echo  请从 python.org 下载安装，安装时勾选 "Add Python to PATH"
+    echo Python not found!
+    echo Please download from:
+    echo https://www.python.org/downloads/windows/
+    echo Make sure to check "Add Python to PATH" during install.
+    echo.
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo    ✓ %%i
+for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo    OK: %%i
 
-:: ── 第2步：安装依赖 ──
+:: Step 2: Install dependencies
 echo.
-echo [2/3] 正在安装所需组件（首次需要 1-2 分钟）...
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet 2>nul
-if %errorlevel% neq 0 (
-    pip install -r requirements.txt --quiet 2>nul
+echo [2/3] Installing dependencies (first time may take 1-2 mins)...
+pip install -r requirements.txt --quiet 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    pip install -r requirements.txt --quiet -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
 )
-echo    ✓ 组件安装完成
+echo    OK
 
-:: ── 第3步：关闭旧进程 ──
+:: Step 3: Start
 echo.
-echo [3/3] 正在启动 Eva Agent...
+echo [3/3] Starting Eva Agent...
+
+:: Kill old process
 for /f "tokens=2 delims=," %%a in ('tasklist /fi "imagename eq python.exe" /fo csv /nh 2^>nul') do (
     taskkill /f /pid %%a >nul 2>&1
 )
 
-:: ── 后台启动服务 ──
+:: Start server in background
 start /b python run.py
 
-:: ── 等待服务就绪 ──
-echo   等待服务启动...
+:: Wait for server
+echo    Waiting for server...
 :waitloop
 timeout /t 2 /nobreak >nul
 powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:19198' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch {} exit 1" >nul 2>&1
-if %errorlevel% neq 0 goto waitloop
+if %ERRORLEVEL% NEQ 0 goto waitloop
 
-:: ── 打开浏览器 ──
+:: Open browser
 start http://localhost:19198
 
 echo.
-echo  ╔══════════════════════════════════╗
-echo  ║   Eva Agent 已启动              ║
-echo  ║   浏览器窗口已自动打开           ║
-echo  ║   关闭命令行窗口即可停止服务     ║
-echo  ╚══════════════════════════════════╝
+echo ====================================
+echo   Eva Agent is running!
+echo   Browser opened at localhost:19198
+echo   Close this window to stop the server
+echo ====================================
 echo.
-
-:: ── 保持窗口（关闭时停服务） ──
-echo 按任意键停止服务...
-pause >nul
-
-:: ── 清理 ──
-for /f "tokens=2 delims=," %%a in ('tasklist /fi "imagename eq python.exe" /fo csv /nh 2^>nul') do (
-    taskkill /f /pid %%a >nul 2>&1
-)
-exit
+pause
