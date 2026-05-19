@@ -23,6 +23,8 @@ export default function App() {
   const [cf, setCf] = useState<{ provider: string; name: string; apiKeys: Record<string, string> }>({ provider: "", name: "", apiKeys: {} });
   const [newKey, setNewKey] = useState("");
   const [cfgModel, setCfgModel] = useState("");
+  const [activePanel, setActivePanel] = useState("chat");
+  const [memories, setMemories] = useState<string[]>([]);
   const chatsEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { chatsEnd.current?.scrollIntoView(); }, [messages]);
@@ -68,15 +70,15 @@ export default function App() {
       {sidebar && (
         <div className="w-14 bg-card border-r border-border flex flex-col items-center py-3 gap-3 shrink-0">
           {[
-            { icon: MessageSquare, label: "对话" },
-            { icon: GitBranch, label: "任务" },
-            { icon: Brain, label: "模型" },
-            { icon: Zap, label: "频道" },
-            { icon: FileText, label: "技能" },
-            { icon: Terminal, label: "记忆" },
-            { icon: Logs, label: "日志" },
-          ].map(({ icon: Icon, label }) => (
-            <button key={label} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-accent/10 hover:text-accent transition-colors" title={label}>
+            { icon: MessageSquare, label: "对话", id: "chat", action: () => setActivePanel("chat") },
+            { icon: GitBranch, label: "任务", id: "tasks", action: () => { setActivePanel("tasks"); setMessages(prev => [...prev, { role: "system", content: "📋 任务面板 — 暂无活跃任务" }]); } },
+            { icon: Brain, label: "模型", id: "models", action: () => setConfigOpen(true) },
+            { icon: Zap, label: "频道", id: "channels", action: () => { setActivePanel("channels"); setMessages(prev => [...prev, { role: "system", content: "📡 频道列表：开发 / 办公助理 / 学习" }]); } },
+            { icon: FileText, label: "技能", id: "skills", action: () => { setActivePanel("skills"); setMessages(prev => [...prev, { role: "system", content: "⚡ 技能 — 暂无已保存的技能" }]); } },
+            { icon: Terminal, label: "记忆", id: "memory", action: () => { api("/api/memories").then(d => { const items = ((d as any).memories || []).slice(0, 8).map((m: any) => "📌 " + (m.title || "")).join("\n"); setMessages(prev => [...prev, { role: "system", content: "🧠 最近记忆：\n" + (items || "暂无记忆") }]); }).catch(() => {}); } },
+            { icon: Logs, label: "日志", id: "logs", action: () => { setActivePanel("logs"); setMessages(prev => [...prev, { role: "system", content: "📝 日志面板" }]); } },
+          ].map(({ icon: Icon, label, id, action }) => (
+            <button key={label} onClick={action} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${activePanel === id ? "bg-accent/15 text-accent" : "text-muted-foreground hover:bg-accent/10 hover:text-accent"}`} title={label}>
               <Icon size={18} />
             </button>
           ))}
