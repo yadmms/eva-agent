@@ -59,16 +59,21 @@ echo Old python processes killed >>%STARTUP_LOG%
 start /b python run.py >%SERVER_LOG% 2>&1
 echo Server process started >>%STARTUP_LOG%
 
-:: Wait for server
+:: Wait for server (max 30 seconds)
 echo    Waiting for server...
+set WAIT_COUNT=0
 :waitloop
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
+set /a WAIT_COUNT+=1
 powershell -Command "try { $r = Invoke-WebRequest -Uri 'http://localhost:19198' -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch {} exit 1" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    Still waiting...
-    goto waitloop
+if %ERRORLEVEL% EQU 0 (
+    echo Server ready >>%STARTUP_LOG%
+    goto server_ready
 )
-echo Server ready >>%STARTUP_LOG%
+if %WAIT_COUNT% LSS 10 goto waitloop
+echo Server may still be starting... >>%STARTUP_LOG%
+
+:server_ready
 
 :: Open browser
 start http://localhost:19198
