@@ -25,9 +25,11 @@ for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo    OK: %%i
 :: Step 2: Install dependencies
 echo.
 echo [2/3] Installing dependencies (first time may take 1-2 mins)...
-pip install -r requirements.txt --quiet 2>nul
+echo    Running: pip install -r requirements.txt
+pip install -r requirements.txt
 if %ERRORLEVEL% NEQ 0 (
-    pip install -r requirements.txt --quiet -i https://pypi.tuna.tsinghua.edu.cn/simple 2>nul
+    echo    Retrying with mirror...
+    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 )
 echo    OK
 
