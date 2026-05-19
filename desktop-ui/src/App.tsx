@@ -1,0 +1,187 @@
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Input, Textarea } from "@/components/ui/input";
+import { Card, Select } from "@/components/ui/card";
+import { api, getConfig, addModel, getModels } from "@/lib/api";
+import {
+  Send, Settings, Plus, MessageSquare, GitBranch, Brain, Terminal, FileText, Zap, Logs, ChevronLeft, ChevronRight, Server, Cpu
+} from "lucide-react";
+
+type Message = { role: "user" | "assistant" | "system"; content: string };
+
+export default function App() {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "assistant", content: "你好，我是 Eva。有什么可以帮你的？" },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [model, setModel] = useState("");
+  const [models, setModels] = useState<{ provider: string; name: string }[]>([]);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [sidebar, setSidebar] = useState(true);
+  const [status, setStatus] = useState({ cpu: 0, mem: 0 });
+  const [cf, setCf] = useState<{ provider: string; name: string; apiKeys: Record<string, string> }>({ provider: "", name: "", apiKeys: {} });
+  const [newKey, setNewKey] = useState("");
+  const [cfgModel, setCfgModel] = useState("");
+  const chatsEnd = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { chatsEnd.current?.scrollIntoView(); }, [messages]);
+
+  useEffect(() => {
+    getConfig().then(c => { setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys }); setCfgModel(c.current.provider + "/" + c.current.name); }).catch(() => {});
+    getModels().then(m => setModels(m)).catch(() => {});
+    const t = setInterval(() => {
+      api<{ cpu_percent: number; memory_percent: number }>("/status")
+        .then(s => setStatus({ cpu: s.cpu_percent, mem: s.memory_percent })).catch(() => {});
+    }, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const msg = input;
+    setInput("");
+    setMessages(prev => [...prev, { role: "user", content: msg }]);
+    setLoading(true);
+    try {
+      const data = await api<{ reply: string }>("/chat", {
+        method: "POST", body: JSON.stringify({ message: msg }),
+      });
+      setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
+    } catch (e: any) {
+      setMessages(prev => [...prev, { role: "system", content: "错误: " + e.message }]);
+    }
+    setLoading(false);
+  };
+
+  const handleAddModel = async () => {
+    if (!cf.provider || !cfgModel) return;
+    await addModel(cf.provider, cfgModel, newKey || undefined);
+    setNewKey("");
+    const c = await getConfig();
+    setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys });
+  };
+
+  return (
+    <div className="flex h-screen w-screen bg-background text-foreground overflow-hidden">
+      {/* Sidebar */}
+      {sidebar && (
+        <div className="w-14 bg-card border-r border-border flex flex-col items-center py-3 gap-3 shrink-0">
+          {[
+            { icon: MessageSquare, label: "对话" },
+            { icon: GitBranch, label: "任务" },
+            { icon: Brain, label: "模型" },
+            { icon: Zap, label: "频道" },
+            { icon: FileText, label: "技能" },
+            { icon: Terminal, label: "记忆" },
+            { icon: Logs, label: "日志" },
+          ].map(({ icon: Icon, label }) => (
+            <button key={label} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-accent/10 hover:text-accent transition-colors" title={label}>
+              <Icon size={18} />
+            </button>
+          ))}
+          <div className="flex-1" />
+          <button className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-accent/10 hover:text-accent" title="设置" onClick={() => setConfigOpen(true)}>
+            <Settings size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top bar */}
+        <header className="h-12 border-b border-border flex items-center px-4 gap-3 shrink-0 bg-card/50">
+          <button onClick={() => setSidebar(!sidebar)} className="text-muted-foreground hover:text-foreground">
+            {sidebar ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
+            <Cpu size={14} /> {status.cpu.toFixed(0)}%
+            <Server size={14} className="ml-2" /> {status.mem.toFixed(0)}%
+            <span className="ml-2 text-accent">{model || "deepseek/deepseek-v4-flash"}</span>
+          </div>
+        </header>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
+                m.role === "user" ? "bg-accent text-accent-foreground" :
+                m.role === "system" ? "bg-muted/50 text-muted-foreground italic" :
+                "bg-card border border-border"
+              }`}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-muted-foreground">
+                <span className="animate-pulse">思考中...</span>
+              </div>
+            </div>
+          )}
+          <div ref={chatsEnd} />
+        </div>
+
+        {/* Input */}
+        <div className="border-t border-border p-4 bg-card/30">
+          <div className="flex gap-2 max-w-4xl mx-auto">
+            <Textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="输入消息… (Shift+Enter 换行)"
+              className="min-h-[44px] max-h-[120px]"
+              rows={1}
+            />
+            <Button onClick={send} disabled={loading} size="lg" className="px-3">
+              <Send size={18} />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Config Dialog */}
+      {configOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setConfigOpen(false)}>
+          <Card className="w-[420px] p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold">⚙️ 模型配置</h2>
+            <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+              当前：<span className="text-accent font-medium">{cfgModel || "--"}</span>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">快速添加：</p>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { p: "deepseek", m: "deepseek-v4-flash", u: "https://api.deepseek.com", l: "DeepSeek V4" },
+                  { p: "zhipu", m: "glm-4-flash", u: "https://open.bigmodel.cn/api/paas/v4", l: "智谱 GLM" },
+                  { p: "siliconflow", m: "deepseek-ai/DeepSeek-V3", u: "https://api.siliconflow.cn/v1", l: "硅基" },
+                ].map(item => (
+                  <Button key={item.l} variant="outline" size="sm" onClick={() => { setCf(p => ({ ...p, provider: item.p, name: item.m })); setCfgModel(item.m); }}>
+                    {item.l}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="提供商" value={cf.provider} onChange={e => setCf(p => ({ ...p, provider: e.target.value }))} />
+              <Input placeholder="模型名" value={cfgModel} onChange={e => setCfgModel(e.target.value)} />
+              <Input placeholder="API Key" type="password" value={newKey} onChange={e => setNewKey(e.target.value)} className="col-span-2" />
+            </div>
+            <Button onClick={handleAddModel} className="w-full">+ 添加模型</Button>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {Object.entries(cf.apiKeys).map(([prov, key]) => (
+                <div key={prov} className="flex items-center justify-between text-xs bg-muted/30 rounded-md px-3 py-2">
+                  <span>{prov}</span>
+                  <span className="text-green-500">✓ 已配置</span>
+                </div>
+              ))}
+            </div>
+            <Button variant="ghost" className="w-full" onClick={() => setConfigOpen(false)}>关闭</Button>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
