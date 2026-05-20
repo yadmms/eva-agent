@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:19198";
+// 和 Python 后端同源时用相对路径，否则用绝对路径
+const API_BASE = window.location.port === "1420" ? "" : "";
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

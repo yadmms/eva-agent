@@ -1,14 +1,9 @@
 """API服务器 — FastAPI微服务"""
 import json, time, asyncio
 from pathlib import Path
-import aiofiles
 from .agent import create_agent, Agent
-from .avatars import get_avatar
 from .config import get as get_config
-from .router import router as nova_router
-from .devices import get_registry
-from .acceptance import create_report, submit_report, regenerate_report, AcceptanceReport, REPORTS_DIR
-from .models import ChatRequest, ChatResponse, StatusResponse, SwitchModelRequest, CreateReportRequest, FeedbackRequest, SubmitRequest, ModelConfigRequest, DeleteModelRequest, SpawnAgentRequest, DelegateRequest
+from .models import ChatRequest, ChatResponse, StatusResponse, SwitchModelRequest, ModelConfigRequest, DeleteModelRequest
 
 try:
     import psutil; HAS_PSUTIL = True
@@ -24,7 +19,7 @@ try:
 except ImportError:
     FastAPI = None
 
-app = FastAPI(title="Eva Agent", version="0.11.3") if FastAPI else None
+app = FastAPI(title="Eva Agent", version="0.11.5") if FastAPI else None
 _agent: Agent = None
 ASSETS_DIR = Path.home() / "eva_assets"
 
@@ -38,18 +33,10 @@ def get_agent() -> Agent:
 
 if FastAPI:
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-    dashboard_dir = Path(__file__).parent / "desktop"
-    if dashboard_dir.exists():
-        app.mount("/static", StaticFiles(directory=str(dashboard_dir)), name="static")
 
-    cfg_dir = get_config().get("assets_dir", "")
-    if cfg_dir:
-        ASSETS_DIR = Path(cfg_dir)
-
-    @app.get("/")
-    async def dashboard():
-        index_path = Path(__file__).parent / "desktop" / "dashboard.html"
-        return FileResponse(str(index_path)) if index_path.exists() else {"message": "Eva Agent v0.11.3", "docs": "/docs"}
+    @app.get("/api/health")
+    async def health_check():
+        return {"status": "ok", "version": "0.11.5"}
 
     @app.post("/chat", response_model=ChatResponse)
     async def chat_endpoint(req: ChatRequest):
@@ -102,7 +89,7 @@ if FastAPI:
                 cpu = round(100 * (1 - delta_idle / max(delta_total, 1)), 1)
             except Exception:
                 cpu = 0.0
-        return StatusResponse(cpu_percent=cpu, memory_percent=mem_pct, memory_used_mb=mem_used_mb, memory_total_mb=mem_total_mb, agent_ready=_agent is not None, model=f"{config['model']['provider']}/{config['model']['name']}", version="0.11.3")
+        return StatusResponse(cpu_percent=cpu, memory_percent=mem_pct, memory_used_mb=mem_used_mb, memory_total_mb=mem_total_mb, agent_ready=_agent is not None, model=f"{config['model']['provider']}/{config['model']['name']}", version="0.11.5")
 
     @app.get("/api/i18n/zh")
     async def i18n_zh():
@@ -169,119 +156,9 @@ if FastAPI:
         save_config()
         return {"status": "ok", "deleted": f"{p}/{n}"}
 
-    @app.post("/report/create")
-    async def create_report_endpoint(req: CreateReportRequest):
-        return create_report(req.task_name, req.items, req.version).to_dict()
-
-    @app.post("/report/{report_id}/feedback")
-    async def report_feedback_endpoint(report_id: str, req: FeedbackRequest):
-        report = AcceptanceReport.load(report_id)
-        if not report: raise HTTPException(404, "报告不存在")
-        if req.item_index >= len(report.items): raise HTTPException(400, "无效的项索引")
-        report.items[req.item_index].update({"status": req.status, "feedback": req.feedback})
-        report.save()
-        return report.to_dict()
-
-    @app.post("/report/{report_id}/submit")
-    async def report_submit_endpoint(report_id: str, req: SubmitRequest):
-        result = submit_report(report_id, req.overall_notes)
-        if "error" in result: raise HTTPException(400, result["error"])
-        if result["failed_count"] > 0:
-            get_agent().run(_build_fix_prompt(result))
-            fixed = [i["name"] for i in result.get("failed_items", [])]
-            new_report = regenerate_report(report_id, fixed)
-            return {**result, "fixed": True, "new_report": new_report.to_dict()}
-        return {**result, "fixed": False, "message": "全部通过，验收完成"}
-
-    @app.get("/report/{report_id}")
-    async def report_view_endpoint(report_id: str):
-        report = AcceptanceReport.load(report_id)
-        if not report: raise HTTPException(404, "报告不存在")
-        return report.to_dict()
-
-    @app.get("/reports")
-    async def reports_list_endpoint():
-        if not REPORTS_DIR.exists(): return []
-        reports = []
-        for f in sorted(REPORTS_DIR.glob("*.json"), reverse=True):
-            reports.append(json.loads(f.read_text()))
-        return reports
-
-    @app.post("/agents/spawn")
-    async def spawn_agent_endpoint(req: SpawnAgentRequest):
-        from .delegate import get_manager
-        return get_manager().spawn(name=req.name, role=req.role, provider=req.provider or None, model=req.model or None, api_key=req.api_key)
-
     @app.get("/agents")
     async def list_agents_endpoint():
         from .delegate import get_manager; return {"agents": get_manager().list_agents()}
-
-    @app.post("/agents/{name}/delegate")
-    async def delegate_endpoint(name: str, req: DelegateRequest):
-        from .delegate import get_manager; return {"reply": get_manager().delegate(req.agent_name or name, req.task)}
-
-    @app.delete("/agents/{name}")
-    async def kill_agent_endpoint(name: str):
-        from .delegate import get_manager; return get_manager().kill(name)
-
-    @app.get("/api/v1/devices")
-    async def list_devices():
-        return {"devices": get_registry().list_devices()}
-
-    @app.post("/api/v1/devices/register")
-    async def register_device(req: Request):
-        data = await req.json()
-        d = get_registry().register(device_id=data["device_id"], name=data.get("name", data["device_id"]), capabilities=data.get("capabilities", []), pins=data.get("pins", {}))
-        return {"status": "registered", "device": d}
-
-    @app.post("/api/v1/devices/report")
-    async def device_report(req: Request):
-        data = await req.json()
-        reg = get_registry()
-        ok = reg.report(data["device_id"], data["data"])
-        reg.heartbeat(data["device_id"])
-        return {"status": "ok" if ok else "unknown_device"}
-
-    @app.get("/api/v1/devices/{device_id}")
-    async def get_device(device_id: str):
-        device = get_registry().get_device(device_id)
-        return {"device": device} if device else {"error": "not found"}
-
-    @app.post("/api/assets/upload")
-    async def upload_asset(category: str = "buildings", file: UploadFile = FastAPIFile(...)):
-        cat_dir = ASSETS_DIR / category; cat_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = file.filename.replace(" ", "_").replace("..", "").replace("/", "")
-        async with aiofiles.open(cat_dir / safe_name, "wb") as f:
-            await f.write(await file.read())
-        return {"status": "ok", "filename": safe_name, "category": category}
-
-    @app.get("/api/assets/list")
-    async def list_assets(category: str = None):
-        if not ASSETS_DIR.exists(): return {"assets": {}, "categories": []}
-        result = {}
-        for cat in [d.name for d in ASSETS_DIR.iterdir() if d.is_dir()]:
-            if category and cat != category: continue
-            files = [f.name for f in (ASSETS_DIR / cat).iterdir() if f.suffix == ".png"]
-            result[cat] = [{"name": f, "path": f"/static/user_assets/{cat}/{f}", "category": cat} for f in sorted(files)]
-        return {"assets": result, "categories": sorted(result.keys())}
-
-    @app.delete("/api/assets/delete")
-    async def delete_asset(category: str, filename: str):
-        fp = ASSETS_DIR / category / filename
-        if fp.exists(): fp.unlink(); return {"status": "deleted"}
-        return {"status": "not_found"}
-
-    @app.post("/api/assets/replace")
-    async def replace_placeholder(category: str, user_filename: str, target: str):
-        import shutil
-        src = ASSETS_DIR / category / user_filename
-        if not src.exists(): return {"status": "error", "msg": "Source not found"}
-        sprites_dir = ASSETS_DIR / "sprites"; sprites_dir.mkdir(parents=True, exist_ok=True)
-        dest = sprites_dir / f"{target}.png"
-        if dest.exists(): shutil.copy(dest, sprites_dir / f"{target}.png.bak")
-        shutil.copy(src, dest)
-        (dest.with_suffix(".png.import")).unlink(missing_ok=True)
-        return {"status": "ok", "replaced": str(dest)}
 
     @app.get("/mastery")
     async def mastery_endpoint():
@@ -400,10 +277,6 @@ if FastAPI:
         (sessions_dir / f"{sid}.json").write_text(json.dumps(session, ensure_ascii=False))
         return {"id": sid, "name": session["name"]}
 
-def _build_fix_prompt(result: dict) -> str:
-    items = "\n".join(f"- {i['name']}: {i['feedback']}" for i in result["failed_items"])
-    return f"以下验收项未通过，请根据用户反馈修复：\n{items}\n\n用户整体反馈：{result['overall_notes'] or '无'}\n请逐一修复上述问题。"
-
     @app.get("/api/version/check")
     async def version_check_endpoint():
         try:
@@ -418,7 +291,18 @@ def _build_fix_prompt(result: dict) -> str:
                         "url": data.get("html_url", "")}
         except Exception:
             pass
-        return {"current": "0.11.3", "latest": "", "update_available": False}
+        return {"current": "0.11.5", "latest": "", "update_available": False}
+
+    # 服务 React 前端（放在所有 API 路由之后）
+    react_dist = Path(__file__).parent.parent / "desktop-ui" / "dist"
+    if react_dist.exists():
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+        app.mount("/assets", StaticFiles(directory=str(react_dist / "assets")), name="assets")
+
+        @app.get("/{full_path:path}")
+        async def serve_react(full_path: str):
+            return FileResponse(str(react_dist / "index.html"))
 
 def run_server(host: str = None, port: int = None, reload: bool = False):
     if not FastAPI:
@@ -426,7 +310,7 @@ def run_server(host: str = None, port: int = None, reload: bool = False):
     config = get_config()
     host = host or config["server"]["host"]; port = port or config["server"]["port"]
     get_agent()
-    print(f"Eva Agent v0.11.3 启动 — 千叶实验室")
+    print(f"Eva Agent v0.11.5 启动 — 千叶实验室")
     print(f"桌面端: http://localhost:{port}")
     print(f"API文档: http://localhost:{port}/docs")
     print(f"热重载: {'开启' if reload else '关闭'} — 改代码后自动重启")

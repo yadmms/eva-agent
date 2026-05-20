@@ -34,12 +34,16 @@ export default function App() {
       setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys });
       setCfgModel(c.current.provider + "/" + c.current.name);
       if (!hasKeys) {
-        setNoKey(true); setConfigOpen(true);
+        setNoKey(true); setConfigOpen(true); setCfgModel("deepseek-v4-flash");
+        setCf(p => ({ ...p, provider: "deepseek", name: "deepseek-v4-flash" }));
         setMessages([{ role: "assistant", content: "👋 欢迎使用 Eva Agent！\n\n首次使用需要先配一个 AI 大脑（API Key），三步搞定：\n\n① 打开浏览器，访问 platform.deepseek.com\n   用手机号注册账号（1 分钟）\n② 点顶部「API Keys」→「创建 API Key」\n   复制那一长串以 sk- 开头的字符\n③ 点右下角 ⚙️ 齿轮图标\n   粘贴 Key，点「添加模型」\n\n💡 需要充值 10 元才能用，一次问答大约 1 分钱\n💡 不想充值也可以用智谱 AI（有免费额度）\n\n配置好之后跟我说「你好」开始。" }]);
       } else {
         setMessages([{ role: "assistant", content: "你好，我是 Eva。有什么可以帮你的？" }]);
       }
-    }).catch(() => { setNoKey(true); setConfigOpen(true); });
+    }).catch(() => {
+      setNoKey(true); setConfigOpen(true);
+      setMessages([{ role: "assistant", content: "⚠️ 连接后端失败，请确认 Python 服务是否在运行（cd eva-agent && python3 run.py）。\n\n首次使用还需配置 API Key：\n① 打开 platform.deepseek.com 注册\n② 创建 API Key 并复制\n③ 点击下方 ⚙️ 粘贴 Key" }]);
+    });
     getModels().then(m => setModels(m)).catch(() => {});
     const t = setInterval(() => {
       api<{ cpu_percent: number; memory_percent: number }>("/status")
@@ -65,12 +69,35 @@ export default function App() {
     setLoading(false);
   };
 
+  const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+
   const handleAddModel = async () => {
     if (!cf.provider || !cfgModel) return;
-    await addModel(cf.provider, cfgModel, newKey || undefined);
+    try {
+      await addModel(cf.provider, cfgModel, newKey || undefined);
+    } catch {
+      setMessages(prev => [...prev, { role: "system", content: "❌ 保存失败，请重试" }]);
+      return;
+    }
     setNewKey("");
+    setKeyStatus("idle");
     const c = await getConfig();
     setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys });
+    setMessages(prev => [...prev, { role: "system", content: "✅ 配置已保存，现在可以开始对话了！" }]);
+    setConfigOpen(false);
+  };
+
+  const testKey = async () => {
+    if (!newKey) return;
+    setKeyStatus("testing");
+    try {
+      const r = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+      setKeyStatus(r.status === 200 ? "ok" : "fail");
+    } catch { setKeyStatus("fail"); }
   };
 
   return (
@@ -179,9 +206,17 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2">
               <Input placeholder="提供商" value={cf.provider} onChange={e => setCf(p => ({ ...p, provider: e.target.value }))} />
               <Input placeholder="模型名" value={cfgModel} onChange={e => setCfgModel(e.target.value)} />
-              <Input placeholder="API Key" type="password" value={newKey} onChange={e => setNewKey(e.target.value)} className="col-span-2" />
+              <div className="col-span-2 flex gap-2">
+                <Input placeholder="API Key（sk-...）" type="password" value={newKey} onChange={e => { setNewKey(e.target.value); setKeyStatus("idle"); }} className="flex-1" />
+                <Button variant="outline" size="sm" onClick={testKey} disabled={!newKey || keyStatus === "testing"} className="shrink-0">
+                  {keyStatus === "testing" ? "..." : keyStatus === "ok" ? "✅" : keyStatus === "fail" ? "❌" : "测试"}
+                </Button>
+              </div>
             </div>
-            <Button onClick={handleAddModel} className="w-full">+ 添加模型</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setConfigOpen(false)} variant="ghost" className="flex-1">取消</Button>
+              <Button onClick={handleAddModel} className="flex-1">确认</Button>
+            </div>
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {Object.entries(cf.apiKeys).map(([prov, key]) => (
                 <div key={prov} className="flex items-center justify-between text-xs bg-muted/30 rounded-md px-3 py-2">

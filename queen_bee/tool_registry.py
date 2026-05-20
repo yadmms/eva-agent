@@ -71,7 +71,6 @@ def _auto_register():
     from queen_bee.tools.terminal import execute as terminal_execute
     from queen_bee.tools.file_ops import read_file, write_file, search_files
     from queen_bee.tools.web_search import fetch_url
-    from queen_bee.web_inspector import fetch_and_analyze as web_fetch_and_analyze, check_links as web_check_links
 
     # ─── terminal.execute ─────────────────────────────────
     register(
@@ -221,55 +220,6 @@ def _auto_register():
             "required": ["url"],
         },
         execute=fetch_url,
-    )
-
-    # ─── web_inspector.fetch_and_analyze ─────────────────
-    register(
-        name="web_inspect",
-        description="抓取网页并进行全面分析。检测HTTP状态码、响应时间、页面大小、"
-                    "SEO问题（缺title/description/h1/viewport）、"
-                    "链接/图片/脚本/css/表单/iframe数量、"
-                    "是否gzip压缩。返回结构化JSON分析报告。",
-        parameters={
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "目标URL（http/https）",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "超时秒数（默认15）",
-                    "default": 15,
-                },
-            },
-            "required": ["url"],
-        },
-        execute=web_fetch_and_analyze,
-    )
-
-    # ─── web_inspector.check_links ───────────────────────
-    register(
-        name="check_links",
-        description="检测网页中所有链接的有效性。提取所有<a href>链接，"
-                    "并发检查前20个唯一链接的HTTP状态，"
-                    "返回断链列表（含状态码和错误信息）。",
-        parameters={
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "目标URL（http/https）",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "抓取页面超时秒数（默认15）",
-                    "default": 15,
-                },
-            },
-            "required": ["url"],
-        },
-        execute=web_check_links,
     )
 
     # ─── palace.recall ─────────────────────────────────────
