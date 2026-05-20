@@ -10,9 +10,7 @@ import {
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "你好，我是 Eva。有什么可以帮你的？" },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState("");
@@ -25,12 +23,23 @@ export default function App() {
   const [cfgModel, setCfgModel] = useState("");
   const [activePanel, setActivePanel] = useState("chat");
   const [memories, setMemories] = useState<string[]>([]);
+  const [noKey, setNoKey] = useState(false);
   const chatsEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { chatsEnd.current?.scrollIntoView(); }, [messages]);
 
   useEffect(() => {
-    getConfig().then(c => { setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys }); setCfgModel(c.current.provider + "/" + c.current.name); }).catch(() => {});
+    getConfig().then(c => {
+      const hasKeys = Object.keys(c.api_keys).length > 0;
+      setCf({ provider: c.current.provider, name: c.current.name, apiKeys: c.api_keys });
+      setCfgModel(c.current.provider + "/" + c.current.name);
+      if (!hasKeys) {
+        setNoKey(true); setConfigOpen(true);
+        setMessages([{ role: "assistant", content: "👋 欢迎使用 Eva Agent！\n\n首次使用需要先配一个 AI 大脑（API Key），三步搞定：\n\n① 打开浏览器，访问 platform.deepseek.com\n   用手机号注册账号（1 分钟）\n② 点顶部「API Keys」→「创建 API Key」\n   复制那一长串以 sk- 开头的字符\n③ 点右下角 ⚙️ 齿轮图标\n   粘贴 Key，点「添加模型」\n\n💡 需要充值 10 元才能用，一次问答大约 1 分钱\n💡 不想充值也可以用智谱 AI（有免费额度）\n\n配置好之后跟我说「你好」开始。" }]);
+      } else {
+        setMessages([{ role: "assistant", content: "你好，我是 Eva。有什么可以帮你的？" }]);
+      }
+    }).catch(() => { setNoKey(true); setConfigOpen(true); });
     getModels().then(m => setModels(m)).catch(() => {});
     const t = setInterval(() => {
       api<{ cpu_percent: number; memory_percent: number }>("/status")
@@ -78,8 +87,9 @@ export default function App() {
             { icon: Terminal, label: "记忆", id: "memory", action: () => { api("/api/memories").then(d => { const items = ((d as any).memories || []).slice(0, 8).map((m: any) => "📌 " + (m.title || "")).join("\n"); setMessages(prev => [...prev, { role: "system", content: "🧠 最近记忆：\n" + (items || "暂无记忆") }]); }).catch(() => {}); } },
             { icon: Logs, label: "日志", id: "logs", action: () => { setActivePanel("logs"); setMessages(prev => [...prev, { role: "system", content: "📝 日志面板" }]); } },
           ].map(({ icon: Icon, label, id, action }) => (
-            <button key={label} onClick={action} className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${activePanel === id ? "bg-accent/15 text-accent" : "text-muted-foreground hover:bg-accent/10 hover:text-accent"}`} title={label}>
+            <button key={label} onClick={action} className={`group relative w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${activePanel === id ? "bg-accent/15 text-accent" : "text-muted-foreground hover:bg-accent/10 hover:text-accent"}`}>
               <Icon size={18} />
+              <span className="absolute left-full ml-2 px-2 py-1 bg-card border border-border text-foreground text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">{label}</span>
             </button>
           ))}
           <div className="flex-1" />

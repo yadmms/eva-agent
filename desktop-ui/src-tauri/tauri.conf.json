@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Eva Agent",
-  "version": "0.11.3",
+  "productName": "eva-agent",
+  "version": "0.11.4",
   "identifier": "com.qianye.eva-agent",
   "build": {
     "frontendDist": "../dist",
